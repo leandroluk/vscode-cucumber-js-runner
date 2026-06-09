@@ -62,51 +62,42 @@ export const startTestRun = async (controller: vscode.TestController, request: v
     async function processTestResults(testItem: vscode.TestItem, testCase: TestCase, cucumberOutput: string[]): Promise<string> {
         let status: string = 'errored';
         let errorMessage: string | undefined;
-        let stepsPassed: number = 0;
-        let stepsTotal: number = 0;
         let executionTime: number | undefined;
-        let examplesPassed: number = 0;
-        let examplesTotal: number = 0;
 
-        for (let i = 0; i < cucumberOutput.length; i++) {
-            const cucumberOutputLine = cucumberOutput[i].trim().replace(/\x1b\[[0-9;]*m/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '');
-            
-            if (cucumberOutputLine.includes('Failures:')) {
-                const failureMessage = cucumberOutput.join('\n').split('Failures:')[1];
-                errorMessage = failureMessage;
+        const fullOutput = cucumberOutput
+            .join('\n')
+            .replace(/\x1b\[[0-9;]*m/g, '')
+            .replace(/[​-‍﻿]/g, '');
+
+        // Check for failures block
+        if (fullOutput.includes('Failures:')) {
+            errorMessage = fullOutput.split('Failures:')[1].trim();
+            status = 'failed';
+        }
+
+        // Parse timing line — supports both formats:
+        //   old: "1m0.000s (executing steps: 0m0.000s)"
+        //   new: "0m 0.88s (0m 0.71s executing your code)"
+        const timingMatch = fullOutput.match(/(\d+)m\s*([\d.]+)s\s*\(/);
+        if (timingMatch) {
+            executionTime = Number(timingMatch[1]) * 60 + Number(timingMatch[2]);
+        }
+
+        // Parse scenario summary — supports both formats:
+        //   old: "1 scenario (1 passed, 0 failed, 0 skipped)"
+        //   new: "1 scenario (1 passed)"  /  "2 scenarios (1 passed, 1 failed)"
+        const scenarioLine = fullOutput.match(/(\d+) scenarios?\s*\(([^)]+)\)/);
+        if (scenarioLine && status !== 'failed') {
+            const total = Number(scenarioLine[1]);
+            const counts = scenarioLine[2];
+            const passed = Number(counts.match(/(\d+) passed/)?.[1] ?? 0);
+            const failed = Number(counts.match(/(\d+) failed/)?.[1] ?? 0);
+
+            if (failed > 0) {
                 status = 'failed';
-                break;
-            } else if (/\d+m\d+\.\d+s\ \(executing\ steps:\ \d+m\d+\.\d+s\)/.test(cucumberOutputLine)) {
-                const scenarioMatch = cucumberOutputLine.match(/(\d+) scenarios?: (\d+) passed, (\d+) failed, (\d+) skipped/);
-                const stepMatch = cucumberOutputLine.match(/(\d+) steps?: (\d+) passed, (\d+) failed, (\d+) skipped/);
-                
-                if (scenarioMatch) {
-                    examplesTotal = Number(scenarioMatch[1]);
-                    examplesPassed = Number(scenarioMatch[2]);
-                }
-
-                if (stepMatch) {
-                    stepsTotal = Number(stepMatch[1]);
-                    stepsPassed = Number(stepMatch[2]);
-                }
-
-                // Determine overall status based on scenarios and steps
-                if (examplesPassed === examplesTotal && stepsPassed === stepsTotal) {
-                    status = 'passed';
-                } else if (examplesPassed === 0 || stepsPassed === 0) {
-                    status = 'failed';
-                } else {
-                    status = 'failed';
-                    errorMessage = `${examplesTotal - examplesPassed} out of ${examplesTotal} examples failed, ` +
-                                   `${stepsTotal - stepsPassed} out of ${stepsTotal} steps failed`;
-                }
-
-                const executionTimeMatch = cucumberOutputLine.match(/(\d+)m([\d.]+)s/);
-                if (executionTimeMatch) {
-                    const minutes = Number(executionTimeMatch[1]);
-                    const seconds = Number(executionTimeMatch[2]);
-                    executionTime = minutes * 60 + seconds;
-                }
+                errorMessage = errorMessage ?? `${failed} of ${total} scenarios failed`;
+            } else if (passed === total && total > 0) {
+                status = 'passed';
             }
         }
 
@@ -115,7 +106,7 @@ export const startTestRun = async (controller: vscode.TestController, request: v
                 testRun.passed(testItem, executionTime);
                 break;
             case 'errored':
-                const errorMsg = new vscode.TestMessage(errorMessage || 'Unknown error! Please check logs for more information');
+                const errorMsg = new vscode.TestMessage(errorMessage ?? 'Unknown error! Please check logs for more information');
                 errorMsg.location = new vscode.Location(testItem.uri!, testItem.range!.end);
                 testRun.errored(testItem, errorMsg);
                 break;
@@ -123,10 +114,7 @@ export const startTestRun = async (controller: vscode.TestController, request: v
                 testRun.skipped(testItem);
                 break;
             case 'failed':
-                const failMsg = new vscode.TestMessage(errorMessage || 
-                    `${examplesTotal - examplesPassed} out of ${examplesTotal} examples failed, ` +
-                    `${stepsTotal - stepsPassed} out of ${stepsTotal} steps failed`
-                );
+                const failMsg = new vscode.TestMessage(errorMessage ?? 'Test failed');
                 failMsg.location = new vscode.Location(testItem.uri!, testItem.range!.end);
                 testRun.failed(testItem, failMsg, executionTime);
                 break;
