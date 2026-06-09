@@ -28,7 +28,6 @@ export class CucumberRunner {
                     port,
                     skipFiles: ['<node_internals>/**', '**/node_modules/**'],
                     sourceMaps: true,
-                    continueOnAttach: true,
                 }).then(undefined, (err: unknown) => {
                     this.log(testRun, `Warning: could not attach debugger: ${err}\r\n`);
                 });
@@ -90,7 +89,7 @@ export class CucumberRunner {
             nodeArguments.push('--require', this.debugTimeoutFile);
         }
 
-        const debugEnvMergedForLog = debug ? {NODE_OPTIONS: '--inspect-brk=9229', ...debugEnv} : {};
+        const debugEnvMergedForLog = debug ? {NODE_OPTIONS: '--inspect=9229', ...debugEnv} : {};
         this.log(testRun,
             'Executing command: '
             + (Object.keys(debugEnvMergedForLog).length ? `${Object.keys(debugEnvMergedForLog).map(vr => vr + '=......').join(' ')} ` : '')
