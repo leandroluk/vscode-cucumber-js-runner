@@ -52,7 +52,7 @@ export const startTestRun = async (controller: vscode.TestController, request: v
 
     async function runTest(testCase: TestCase): Promise<string[]> {
         testRun.appendOutput(`Running test: ${testCase.name}\r\n`);
-        const cucumberOutput = await CucumberRunner.runTest(testRun, testCase.name, debug);
+        const cucumberOutput = await CucumberRunner.runTest(testRun, testCase, debug);
         if (!token.isCancellationRequested) {
             testRun.appendOutput('Finished running test!\r\n\n');
         }
@@ -99,6 +99,8 @@ export const startTestRun = async (controller: vscode.TestController, request: v
             } else if (passed === total && total > 0) {
                 status = 'passed';
             }
+        } else if (/^0 scenarios$/m.test(fullOutput) && status === 'errored') {
+            errorMessage = 'No matching scenario found — check line number or scenario name filter';
         }
 
         switch (status) {

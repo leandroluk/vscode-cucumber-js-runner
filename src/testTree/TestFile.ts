@@ -111,7 +111,7 @@ export default class TestFile {
                         const range = new vscode.Range(new vscode.Position(lineNo, 0), new vscode.Position(lineNo, line.length));
                         const testItem = controller.createTestItem(`${item.uri}/${name}`, name, item.uri);
                         testItem.range = range;
-                        testItemDataMap.set(testItem, new TestCase(name, false, scenarioTestItem!.range!.end));
+                        testItemDataMap.set(testItem, new TestCase(name, false, scenarioTestItem!.range!.end, item.uri!.fsPath, lineNo + 1));
                         scenarioTestItem?.children.add(testItem);
                     }
                     continue;
