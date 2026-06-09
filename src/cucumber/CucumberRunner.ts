@@ -22,8 +22,9 @@ export class CucumberRunner {
                     request: 'attach',
                     name: 'Attach to Cucumber',
                     port,
-                    skipFiles: ['<node_internals>/**'],
+                    skipFiles: ['<node_internals>/**', '**/node_modules/**'],
                     sourceMaps: true,
+                    continueOnAttach: true,
                 }).then(undefined, (err: unknown) => {
                     this.log(testRun, `Warning: could not attach debugger: ${err}\r\n`);
                 });
