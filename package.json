@@ -66,6 +66,15 @@
           "type": "object",
           "required": false,
           "default": {}
+        },
+        "cucumber_runner.debug_timeout": {
+          "markdownDescription": "The `cucumber_runner.debug_timeout` setting defines the step timeout in milliseconds applied via `setDefaultTimeout()` only during debug runs. Set to `-1` to disable the timeout entirely. When unset (null), the cucumber default is used.\nExample:\n```json\n{\n  \"cucumber_runner.debug_timeout\": -1\n}\n```",
+          "type": [
+            "number",
+            "null"
+          ],
+          "required": false,
+          "default": null
         }
       }
     }

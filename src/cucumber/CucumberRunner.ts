@@ -1,10 +1,14 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { getExtensionConfiguration } from '../configuration/getExtensionConfiguration';
 import TestCase from '../testTree/TestCase';
 
 export class CucumberRunner {
     private static cucumberProcess: ChildProcessWithoutNullStreams | undefined;
+    private static debugTimeoutFile: string | undefined;
 
     public static runTest(testRun: vscode.TestRun, testCase: TestCase, debug?: boolean): Promise<string[]> {
         this.killCucumberProcess();
@@ -42,6 +46,10 @@ export class CucumberRunner {
             });
 
             this.cucumberProcess!.on('close', () => {
+                if (this.debugTimeoutFile) {
+                    try { fs.unlinkSync(this.debugTimeoutFile); } catch {}
+                    this.debugTimeoutFile = undefined;
+                }
                 resolve(cucumberOutput);
             });
         });
@@ -54,7 +62,7 @@ export class CucumberRunner {
     }
 
     private static spawnCucumberProcess(testRun: vscode.TestRun, testCase: TestCase, debug?: boolean): ChildProcessWithoutNullStreams {
-        const { featurePaths, env, cliOptions, cucumberPath, cwd, debugEnv } = getExtensionConfiguration();
+        const { featurePaths, env, cliOptions, cucumberPath, cwd, debugEnv, debugTimeout } = getExtensionConfiguration();
 
         let nodeArguments: string[];
         let logSuffix: string;
@@ -70,6 +78,16 @@ export class CucumberRunner {
             scenarioNameRegexed = scenarioNameRegexed.replace(/<[^>]*>/g, ".*");
             nodeArguments = [cucumberPath, ...featurePaths, '--name', scenarioNameRegexed, ...cliOptions];
             logSuffix = [cucumberPath, ...featurePaths, '--name', `"${scenarioNameRegexed}"`, ...cliOptions].join(' ');
+        }
+
+        if (debug && debugTimeout !== null) {
+            const cucumberPkg = path.join(cwd, 'node_modules', '@cucumber', 'cucumber');
+            this.debugTimeoutFile = path.join(os.tmpdir(), `cucumber-debug-timeout-${Date.now()}.cjs`);
+            fs.writeFileSync(
+                this.debugTimeoutFile,
+                `const { setDefaultTimeout } = require(${JSON.stringify(cucumberPkg)});\nsetDefaultTimeout(${debugTimeout});\n`
+            );
+            nodeArguments.push('--require', this.debugTimeoutFile);
         }
 
         const debugEnvMergedForLog = debug ? {NODE_OPTIONS: '--inspect-brk=9229', ...debugEnv} : {};
