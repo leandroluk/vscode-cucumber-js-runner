@@ -6,27 +6,50 @@ import TestCase from '../testTree/TestCase';
 export class CucumberRunner {
     private static cucumberProcess: ChildProcessWithoutNullStreams | undefined;
 
-    public static async runTest(testRun: vscode.TestRun, testCase: TestCase, debug?: boolean): Promise<string[]> {
+    public static runTest(testRun: vscode.TestRun, testCase: TestCase, debug?: boolean): Promise<string[]> {
         this.killCucumberProcess();
 
+        const cucumberOutput: string[] = [];
+        this.cucumberProcess = this.spawnCucumberProcess(testRun, testCase, debug);
+
+        if (debug) {
+            const { debugEnv } = getExtensionConfiguration();
+            const port = this.extractDebugPort(debugEnv);
+            // --inspect-brk pauses immediately — attach after brief delay for port to open
+            setTimeout(() => {
+                vscode.debug.startDebugging(vscode.workspace.workspaceFolders?.[0], {
+                    type: 'node',
+                    request: 'attach',
+                    name: 'Attach to Cucumber',
+                    port,
+                    skipFiles: ['<node_internals>/**'],
+                    sourceMaps: true,
+                }).then(undefined, (err: unknown) => {
+                    this.log(testRun, `Warning: could not attach debugger: ${err}\r\n`);
+                });
+            }, 500);
+        }
+
         return new Promise((resolve) => {
-            const cucumberOutput: string[] = [];
-
-            this.cucumberProcess = this.spawnCucumberProcess(testRun, testCase, debug);
-
-            this.cucumberProcess.stdout.on('data', (chunk: any) => {
+            this.cucumberProcess!.stdout.on('data', (chunk: any) => {
                 this.log(testRun, chunk);
                 cucumberOutput.push(chunk.toString());
             });
 
-            this.cucumberProcess.stderr.on('data', (chunk: any) => {
+            this.cucumberProcess!.stderr.on('data', (chunk: any) => {
                 this.log(testRun, chunk);
             });
 
-            this.cucumberProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+            this.cucumberProcess!.on('close', () => {
                 resolve(cucumberOutput);
             });
         });
+    }
+
+    private static extractDebugPort(debugEnv: {[key: string]: string}): number {
+        const nodeOptions = Object.values(debugEnv).find(v => v.includes('--inspect')) ?? '';
+        const match = nodeOptions.match(/--inspect(?:-brk)?(?:=[^:]*:)?(\d+)/);
+        return match?.[1] ? parseInt(match[1], 10) : 9229;
     }
 
     private static spawnCucumberProcess(testRun: vscode.TestRun, testCase: TestCase, debug?: boolean): ChildProcessWithoutNullStreams {
@@ -48,9 +71,10 @@ export class CucumberRunner {
             logSuffix = [cucumberPath, ...featurePaths, '--name', `"${scenarioNameRegexed}"`, ...cliOptions].join(' ');
         }
 
+        const debugEnvMergedForLog = debug ? {NODE_OPTIONS: '--inspect-brk=9229', ...debugEnv} : {};
         this.log(testRun,
             'Executing command: '
-            + (debug && Object.keys(debugEnv).length ? `${Object.keys(debugEnv).map(vr => vr + '=......').join(' ')} ` : '')
+            + (Object.keys(debugEnvMergedForLog).length ? `${Object.keys(debugEnvMergedForLog).map(vr => vr + '=......').join(' ')} ` : '')
             + (Object.keys(env).length ? `${Object.keys(env).map(vr => vr + '=......').join(' ')} ` : '')
             + 'node '
             + logSuffix
@@ -63,7 +87,7 @@ export class CucumberRunner {
                 cwd: cwd,
                 env: {
                     ...process.env, ...env,
-                    ...(debug && debugEnv),
+                    ...debugEnvMergedForLog,
                 },
             }
         );
